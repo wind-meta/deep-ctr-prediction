@@ -63,6 +63,23 @@ def esmm_model_fn(features, labels, mode, params):
         return tf.estimator.EstimatorSpec(mode, predictions=predictions,
                                           export_outputs=export_outputs)
 
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        predictions = {
+            'ctr_preds': ctr_preds,
+            'cvr_preds': cvr_preds,
+            'ctcvr_preds': ctcvr_preds,
+            'user_id': user_id,
+            'click_label': click_label,
+            'conversion_label': conversion_label
+        }
+        export_outputs = {
+            'regression': tf.estimator.export.RegressionOutput(
+                predictions['cvr_preds'])
+            # 线上预测需要的
+        }
+        return tf.estimator.EstimatorSpec(mode, predictions=predictions,
+                                          export_outputs=export_outputs)
+
     elif mode == tf.estimator.ModeKeys.EVAL:
         return tf.estimator.EstimatorSpec(mode, loss=loss)
 
@@ -70,12 +87,3 @@ def esmm_model_fn(features, labels, mode, params):
         train_op = optimizer.minimize(loss,
                                       global_step=tf.train.get_global_step())
         return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
-    """
-    return head.create_estimator_spec(
-      features=features,
-      mode=mode,
-      labels=labels,
-      logits=logits,
-      train_op_fn=lambda loss: optimizer.minimize(loss, global_step=tf.train.get_global_step())
-    )
-    """
