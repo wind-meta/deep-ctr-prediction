@@ -41,7 +41,8 @@ def cal_group_auc(labels, preds, user_id_list):
     #
     for user_id in group_flag:
         if group_flag[user_id]:
-            auc = roc_auc_score(np.asarray(group_truth[user_id]), np.asarray(group_score[user_id]))
+            auc = roc_auc_score(np.asarray(group_truth[user_id]),
+                                np.asarray(group_score[user_id]))
             total_auc += auc * len(group_truth[user_id])
             impression_total += len(group_truth[user_id])
     group_auc = float(total_auc) / impression_total

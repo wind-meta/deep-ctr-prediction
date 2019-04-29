@@ -1,15 +1,20 @@
-#-*- coding: UTF-8 -*-
+# -*- coding: UTF-8 -*-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import os
 import random
-from esmm import *
-from input_fn import *
+
+import tensorflow as tf
+
+from ESMM.esmm import *
+from ESMM.input_fn import *
 from sklearn.metrics import roc_auc_score
-from metric import cal_group_auc, cross_entropy_loss
+from ESMM.metric import cal_group_auc, cross_entropy_loss
 import numpy as np
-os.environ['CUDA_VISIBLE_DEVICES'] = '6'  #指定用哪块GPU
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '6'  # 指定用哪块GPU
 
 '''
 A tensorflow implementation of ESMM
@@ -21,36 +26,54 @@ Entire Space Multi-Task Model: An Effective Approach for Estimating Post-Click C
 flags = tf.app.flags
 flags.DEFINE_string("model_dir", "./models", "Base directory for the model")
 # 特征样本换成自己的
-flags.DEFINE_string("train_data_dir", "/trainSamples/{20181226,20181227,20181228,20181229,20181230,20181231,20190101}/v1_tfrecord/", "dir for training data")
-flags.DEFINE_string("eval_data_dir", "/testSamples/20190102/v1_tfrecord/", "dir for evaluation data")
+flags.DEFINE_string("train_data_dir",
+                    "/trainSamples/{20181226,20181227,20181228,20181229,20181230,20181231,20190101}/v1_tfrecord/",
+                    "dir for training data")
+flags.DEFINE_string("eval_data_dir", "/testSamples/20190102/v1_tfrecord/",
+                    "dir for evaluation data")
 flags.DEFINE_integer("batch_size", 512, "Training batch size")
-flags.DEFINE_integer(name="num_epochs", short_name="ne", default=2, help="Training num epochs")
+flags.DEFINE_integer(name="num_epochs", short_name="ne", default=2,
+                     help="Training num epochs")
 flags.DEFINE_float("learning_rate", 0.03, "Learning rate")
-flags.DEFINE_string("hidden_units", "512,256,128", "number of units in each hidden layer for NN")
+flags.DEFINE_string("hidden_units", "512,256,128",
+                    "number of units in each hidden layer for NN")
 flags.DEFINE_integer("num_cross_layers", 4, "Number of cross layers")
-flags.DEFINE_integer("save_checkpoints_steps", 20000, "Save checkpoints every steps")
+flags.DEFINE_integer("save_checkpoints_steps", 20000,
+                     "Save checkpoints every steps")
 flags.DEFINE_string("export_dir", "./exportmodels", "Path for exportmodels")
-flags.DEFINE_boolean(name="evaluate_only", short_name="eo", default=False, help="evaluate only flag")
-flags.DEFINE_boolean(name="use_cross", default=True, help="whether use cross layer")
-flags.DEFINE_integer("predict_steps", 6000, "predict_steps*batch_size samples to evaluate")
+flags.DEFINE_boolean(name="evaluate_only", short_name="eo", default=False,
+                     help="evaluate only flag")
+flags.DEFINE_boolean(name="use_cross", default=True,
+                     help="whether use cross layer")
+flags.DEFINE_integer("predict_steps", 6000,
+                     "predict_steps*batch_size samples to evaluate")
 FLAGS = flags.FLAGS
 
-def export_model(model, export_dir, model_column_fn):
-  """Export to SavedModel format.
 
-  Args:
-    model: Estimator object
-    export_dir: directory to export the model.
-    model_column_fn: Function to generate model feature columns.
-  """
-  columns = model_column_fn
-  columns.append(tf.feature_column.numeric_column("user_id", default_value=123456, dtype=tf.int64))
-  columns.append(tf.feature_column.numeric_column("click_label", default_value=0, dtype=tf.int64))
-  columns.append(tf.feature_column.numeric_column("conversion_label", default_value=0, dtype=tf.int64))
-  feature_spec = tf.feature_column.make_parse_example_spec(columns)
-  example_input_fn = (
-      tf.estimator.export.build_parsing_serving_input_receiver_fn(feature_spec))
-  model.export_savedmodel(export_dir, example_input_fn)
+def export_model(model, export_dir, model_column_fn):
+    """Export to SavedModel format.
+
+    Args:
+      model: Estimator object
+      export_dir: directory to export the model.
+      model_column_fn: Function to generate model feature columns.
+    """
+    columns = model_column_fn
+    columns.append(
+        tf.feature_column.numeric_column("user_id", default_value=123456,
+                                         dtype=tf.int64))
+    columns.append(
+        tf.feature_column.numeric_column("click_label", default_value=0,
+                                         dtype=tf.int64))
+    columns.append(
+        tf.feature_column.numeric_column("conversion_label", default_value=0,
+                                         dtype=tf.int64))
+    feature_spec = tf.feature_column.make_parse_example_spec(columns)
+    example_input_fn = (
+        tf.estimator.export.build_parsing_serving_input_receiver_fn(
+            feature_spec))
+    model.export_savedmodel(export_dir, example_input_fn)
+
 
 def list_hdfs_dir(path):
     files = []
@@ -60,6 +83,7 @@ def list_hdfs_dir(path):
         dir_path = dir_path.strip()
         files.append(dir_path)
     return files
+
 
 def model_predict(model, eval_input_fn, epoch):
     """Display evaluate result."""
@@ -89,12 +113,13 @@ def model_predict(model, eval_input_fn, epoch):
         conversion_labels.append(conversion_label)
 
         if len(ctr_predictions) % (num_samples / 10) == 0:
-            tf.logging.info('predict at step %d/%d', int(float(len(ctr_predictions)) / num_samples * FLAGS.predict_steps),
+            tf.logging.info('predict at step %d/%d', int(float(
+                len(ctr_predictions)) / num_samples * FLAGS.predict_steps),
                             FLAGS.predict_steps)
         if len(ctr_predictions) >= num_samples:
             break
 
-    #num_samples = len(predictions)
+    # num_samples = len(predictions)
     # Display evaluation metrics
     # 过滤出点击的样本(click_label&!conversion_label为负样本，click&conversion_label为正样本)，
     # 计算cvr的auc和gauc，变异系数等，等其他你自己想要的指标，可以参考下面的计算
@@ -134,56 +159,59 @@ def model_predict(model, eval_input_fn, epoch):
     tf.logging.info('group auc: %s' % group_auc)
     """
 
+
 def main(unused_argv):
-  train_files = []
-  eval_files = []
-  if isinstance(FLAGS.train_data_dir, str):
-    train_files = list_hdfs_dir(FLAGS.train_data_dir)
+    train_files = []
+    eval_files = []
+    if isinstance(FLAGS.train_data_dir, str):
+        train_files = list_hdfs_dir(FLAGS.train_data_dir)
 
-  if isinstance(FLAGS.eval_data_dir, str):
-    eval_files = list_hdfs_dir(FLAGS.eval_data_dir)
+    if isinstance(FLAGS.eval_data_dir, str):
+        eval_files = list_hdfs_dir(FLAGS.eval_data_dir)
 
-  random.shuffle(train_files)
-  feature_columns = build_model_columns()
+    random.shuffle(train_files)
+    feature_columns = build_model_columns()
 
-  session_config = tf.ConfigProto(device_count={'GPU': 1, 'CPU': 10},
-                                  inter_op_parallelism_threads=10,
-                                  intra_op_parallelism_threads=10
-                                  # log_device_placement=True
-                                  )
-  session_config.gpu_options.per_process_gpu_memory_fraction = 0.32
-  run_config = tf.estimator.RunConfig().replace(
-      model_dir=FLAGS.model_dir,session_config=session_config, log_step_count_steps=1000, save_summary_steps=20000, save_checkpoints_secs=1000)
+    session_config = tf.ConfigProto(device_count={'GPU': 1, 'CPU': 10},
+                                    inter_op_parallelism_threads=10,
+                                    intra_op_parallelism_threads=10
+                                    # log_device_placement=True
+                                    )
+    session_config.gpu_options.per_process_gpu_memory_fraction = 0.32
+    run_config = tf.estimator.RunConfig().replace(
+        model_dir=FLAGS.model_dir, session_config=session_config,
+        log_step_count_steps=1000, save_summary_steps=20000,
+        save_checkpoints_secs=1000)
 
-  model = tf.estimator.Estimator(
-    model_fn=esmm_model_fn,
-    params={
-      'feature_columns': feature_columns,
-      'hidden_units': FLAGS.hidden_units.split(','),
-      'learning_rate': FLAGS.learning_rate,
-      'num_cross_layers': FLAGS.num_cross_layers,
-      'use_cross': FLAGS.num_cross_layers
-    },
-    config = run_config
-  )
-  train_input_fn = lambda: feature_input_fn(train_files, 1, True, FLAGS.batch_size)
-  eval_input_fn = lambda: feature_input_fn(eval_files, 1, False, FLAGS.batch_size)  # not shuffle for evaluate
-  
-  #model_predict(model,eval_input_fn,0)
-  for epoch in range(FLAGS.num_epochs):
-      if FLAGS.evaluate_only == False:
-          model.train(train_input_fn, steps=6000)
-      print("*" * 100)
-      #results = model.evaluate(input_fn=eval_input_fn, steps=6000)
-      model_predict(model,eval_input_fn,epoch)
+    model = tf.estimator.Estimator(
+        model_fn=esmm_model_fn,
+        params={
+            'feature_columns': feature_columns,
+            'hidden_units': FLAGS.hidden_units.split(','),
+            'learning_rate': FLAGS.learning_rate,
+            'num_cross_layers': FLAGS.num_cross_layers,
+            'use_cross': FLAGS.num_cross_layers
+        },
+        config=run_config
+    )
+    train_input_fn = lambda: feature_input_fn(train_files, 1, True,
+                                              FLAGS.batch_size)
+    eval_input_fn = lambda: feature_input_fn(eval_files, 1, False,
+                                             FLAGS.batch_size)  # not shuffle for evaluate
 
+    # model_predict(model,eval_input_fn,0)
+    for epoch in range(FLAGS.num_epochs):
+        if FLAGS.evaluate_only == False:
+            model.train(train_input_fn, steps=6000)
+        print("*" * 100)
+        # results = model.evaluate(input_fn=eval_input_fn, steps=6000)
+        model_predict(model, eval_input_fn, epoch)
 
-
-  # Export the model
-  if FLAGS.export_dir is not None:
-      export_model(model, FLAGS.export_dir, feature_columns)
+    # Export the model
+    if FLAGS.export_dir is not None:
+        export_model(model, FLAGS.export_dir, feature_columns)
 
 
 if __name__ == "__main__":
-  tf.logging.set_verbosity(tf.logging.INFO)
-  tf.app.run(main=main)
+    tf.logging.set_verbosity(tf.logging.INFO)
+    tf.app.run(main=main)
